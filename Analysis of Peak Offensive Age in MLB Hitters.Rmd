@@ -1,0 +1,866 @@
+---
+title: "<center>Analysis of Peak Offensive Age in MLB Hitters</center>"
+subtitle: "<center><span style='color:#ccc; font-style: italic;'>(15 min read)</center>"
+author: <center style="color:#fff;"> Wu Cheng-Yen </center>
+output:
+  html_document:
+    theme: darkly
+    highlight: monochrome
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    css: style_hw.css
+    code_folding: hide
+  html_notebook:
+    theme: darkly
+    highlight: monochrome
+    df_print: paged
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    css: style_hw.css
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE, 
+                      collapse = FALSE,
+                      message = FALSE,
+                      warning = FALSE,
+                      comment = "",
+                      fig.height = 5,
+                      fig.width = 10.4,
+                      class.output = ".codeout")
+
+theme_set(theme_bw())
+```
+
+```{r, echo=FALSE}
+library(Lahman)
+library(tidyverse)
+library(magrittr)
+library(patchwork)
+library(forcats)
+library(ggfortify)
+```
+
+## I. Abstract and Research Topic Introduction
+<span class="readtime">(2 min read)</span>
+
+### 1.1Research Topic Introduction:
+<div class="info-block">
+This study uses the historical Lahman Baseball Database to analyze the differences in peak offensive age (measured by OPS) among MLB players at different fielding positions. By comparing the peak ages of players across positions, we examine whether certain positions tend to reach their offensive prime earlier or later.<br>
+We also further investigate whether **height and weight** are associated with peak age and peak OPS, aiming to understand offensive characteristics across different positions.<br>
+
+</div>
+
+### 1.2 Database Introduction:
+<div class="info-block">
+The Lahman Database, created by Sean Lahman, contains comprehensive MLB statistics from 1871 to the present (current version includes data up to 2023). The database consists of many tables; for this study, the main tables used are:<br>
+
+</div>
+
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th>Table Name</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Batting</td>
+      <td>Includes batting statistics such as hits, home runs, RBIs, etc.</td>
+    </tr>
+    <tr>
+      <td>People</td>
+      <td>Includes player information such as name, birthdate, and physical data.</td>
+    </tr>
+    <tr>
+      <td>Appearances</td>
+      <td>Includes information on player fielding positions.</td>
+    </tr>
+  </tbody>
+</table>
+
+
+Example **Shohei Ohtani**:  <img src="ohtani.jpg" width="40%" style="display: block; margin: auto;" />
+### <span style="display:none;">tabset</span> {.tabset}
+#### People
+```{r}
+People |>
+  filter(playerID == "ohtansh01") 
+```
+
+#### Batting
+```{r}
+Batting |>
+  filter(playerID == "ohtansh01") |>  
+  head(10)
+```
+
+#### Appearances
+```{r}
+Appearances |>
+  filter(playerID == "ohtansh01") 
+```
+
+
+### 1.3 Metrics:
+<div class="info-block">
+To evaluate offensive performance, we adopt **On-base Plus Slugging (OPS)** as the primary indicator. Before calculating OPS, we briefly introduce its components:<br>
+
+- On-base Percentage (OBP):<br>
+Probability of reaching base per plate appearance.<br>
+   $$ OBP = \frac{H + BB + HBP}{AB + BB + HBP + SF} $$<br>
+   <div style="text-align: center;">
+  (H = Hits, BB = Walks, HBP = Hit By Pitch, AB = At Bats, SF = Sacrifice Flies)）
+   </div>
+- Slugging Percentage (SLG):<br>
+Average bases gained per at-bat.<br>
+   $$ SLG = \frac{TB}{AB} $$<br>
+   <div style="text-align: center;">
+  (TB = Total Bases, AB = At Bats)
+   <div style="text-align: center;">
+   (Single = 1 base, Double = 2 bases, Triple = 3 bases, Home Run = 4 bases)<br>
+- On-base Plus Slugging (OPS):<br>
+Measures the overall offensive contribution of a hitter. As the name suggests, it is the sum of **OBP** and **SLG**.<br>
+   $$ OPS = OBP + SLG $$<br>
+
+</div>
+
+### 1.4 Fielding Position Introduction:
+(You may skip this section if already familiar)
+<div class="info-block">
+<img src="position.jpg" width="40%" style="display: block; margin: auto;" />
+
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th>Position</th>
+      <th>Code</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Pitcher (P)</td>
+      <td>1</td>
+      <td>The pitcher not only throws during the defensive inning but also fields. However, pitchers’ batting is not considered in this study.</td>
+    </tr>
+    <tr>
+      <td>Catcher (C)</td>
+      <td>2</td>
+      <td>Receives pitches and controls defense.</td>
+    </tr>
+    <tr>
+      <td>First Base (1B)</td>
+      <td>3</td>
+      <td>Handles many throws from other infielders.</td>
+    </tr>
+    <tr>
+      <td>Second Base (2B)</td>
+      <td>4</td>
+      <td>Defends the right side and middle infield.</td>
+    </tr>
+    <tr>
+      <td>Shortstop (SS)</td>
+      <td>5</td>
+      <td>Defends the left side and middle infield.</td>
+    </tr>
+    <tr>
+      <td>Third Base (3B)</td>
+      <td>6</td>
+      <td>Defends left side infield; requires strong arm.</td>
+    </tr>
+    <tr>
+      <td>Left Field (LF)</td>
+      <td>7</td>
+      <td>Covers left outfield; strong arm needed.</td>
+    </tr>
+    <tr>
+      <td>Center Field (CF)</td>
+      <td>8</td>
+      <td>Covers middle outfield; requires speed and range.</td>
+    </tr>
+    <tr>
+      <td>Right Field (RF)</td>
+      <td>9</td>
+      <td>Covers right outfield; also requires strong arm.</td>
+    </tr>
+    <tr>
+      <td>Designated Hitter (DH)</td>
+      <td>-</td>
+      <td>Only hits, no fielding responsibilities.</td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
+
+---
+
+## II. Research Motivation
+<span class="readtime">(1 min read)</span>
+
+<div class="info-block">
+With the rise of sports science and analytics, performance prediction and strategy analysis have become popular in professional baseball. This inspired me to apply R programming to baseball data, combining my academic learning with personal passion for baseball.。<br>
+
+</div>
+
+---
+
+## III. Data Processing
+<span class="readtime">(3 min read)</span>
+
+### 3.1 KPI Function
+<div class="info-block">
+Before analysis, we define a KPI function to compute players’ age, OBP, SLG, and OPS. Note: For age calculation, players born after July are considered as born in the following year.<br>
+Note: For age calculation, players born after July are considered as born in the following year.
+<br>
+</div>
+
+KPI function：
+```{r}
+KPI <- function(player_id) {
+  player_batting <- Batting |> filter(playerID == player_id)
+  player_info <- People |> filter(playerID == player_id)
+
+  merged_data <- merge(player_batting, player_info, by = "playerID")
+
+  merged_data |>
+    mutate(
+      birthyear = if_else(birthMonth >= 7, birthYear + 1, birthYear),
+      Age = yearID - birthyear,
+      OBP = round((H + BB + HBP) / (AB + BB + HBP + SF), 3),
+      SLG = round((H - X2B - X3B - HR + 2 * X2B + 3 * X3B + 4 * HR) / AB, 3),
+      OPS = round(SLG + OBP, 3)
+    ) |>
+    select(Age, OBP, SLG, OPS) 
+}
+```
+
+Example with **Shohei Ohtani**: 
+```{r}
+KPI("ohtansh01")
+```
+
+
+### 3.2 Adding Fielding Position
+<div class="info-block">
+Next, we define a Position function to add each player’s primary fielding position, so that we can further analyze offensive performance by position.<br>
+The logic here is to count the number of appearances at each fielding position in the **Appearances** table, and then assign the position with the highest count as the player’s main position for that year.<br>
+</div>
+```{r}
+Position <- function(player_id) {
+  pos_cols <- c("G_c", "G_1b", "G_2b", "G_3b", 
+                "G_ss", "G_lf", "G_cf", "G_rf", "G_dh")
+  pos_names <- c("C", "1B", "2B", "3B", 
+                 "SS", "LF", "CF", "RF", "DH")
+  appearances <- Appearances |> 
+  filter(playerID == player_id)
+  total_games <- colSums(appearances[pos_cols], na.rm = T)
+  main_pos <- pos_names[which.max(total_games)]
+  main_pos
+}
+```
+
+Again, let’s take **Shohei Ohtani** as an example to check the position information:
+```{r}
+KPI("ohtansh01") |> 
+  mutate(Position = Position("ohtansh01"))
+```
+
+Next, we apply the KPI and Position functions to all hitters, excluding players with too few at-bats in a season (e.g., due to injury or pitchers batting).<br>
+We then organize the results into one large dataset.<br>
+```{r}
+players <- Batting |>  
+  filter(AB >= 100) |>
+  distinct(playerID) |>
+  pull(playerID)
+
+batting_data <- lapply(players, function(pid) {
+  kpi_stats <- KPI(pid)                     
+  pos       <- Position(pid)            
+  kpi_stats |>
+    mutate(playerID = pid, Position = pos) |>
+    select(playerID, Age, OBP, SLG, OPS, Position)
+}) |> 
+  bind_rows()
+```
+
+We print the first few rows to check the results:<br>
+```{r}
+head(batting_data, 10)
+```
+
+
+### 3.3 Adding Basic Player Information
+Finally, we add player attributes such as birthplace, height, and weight.<br>
+```{r}
+info_data <- People |>
+  select(playerID, birthCountry, height, weight) |>
+  select(playerID, height, weight)
+
+batting_data <- merge(batting_data, info_data, by = "playerID")
+```
+
+We again print the first few rows to check:<br>
+```{r}
+head(batting_data, 10)
+```
+(Height and Weight units are inches and pounds, respectively.)<br>
+
+In addition, we extract each player’s peak season (the year with the highest OPS) into a new dataset for further analysis.<br>
+```{r}
+batting_topOPS <- batting_data |> 
+  group_by(playerID) |> 
+  filter(OPS == max(OPS, na.rm = T)) |> 
+  slice(1) |>  
+  ungroup()
+```
+
+```{r}
+head(batting_topOPS, 10)
+```
+
+### 3.4 Summary {.tabset .tabset-two}
+<div class="info-block">
+After this data processing, we now have two datasets:  
+- **batting_data**: annual statistics of hitters  
+- **batting_topOPS**: only the peak season (highest OPS year) for each hitter  
+
+These datasets will be used for subsequent analysis.<br>
+</div>
+
+#### batting_data
+```{r}
+head(batting_data, 10)
+```
+
+#### batting_topOPS
+```{r}
+head(batting_topOPS, 10)
+```
+
+---
+
+## IV. Analysis Process
+<span>(6 min read)</span>
+
+### 4.1 Relationship Between Age and OPS
+
+#### 4.1.1 Model Assumptions and Testing
+<div class="info-block">
+First, let’s look at scatterplots of OPS versus Age for several players.<br>
+Since **Shohei Ohtani** is still an active player with relatively few data points, we instead select historically well-known players from different positions for illustration.<br>
+(Here we choose: Right Fielder (RF) Hank Aaron, Catcher (C) Mike Piazza, Shortstop (SS) Derek Jeter, and Designated Hitter (DH) Edgar Martinez.)<br>
+</div>
+
+```{r}
+aaronha = batting_data |> 
+          filter(playerID == "aaronha01") |>   
+          ggplot() +               
+          geom_point(aes(Age, OPS)) +
+          scale_x_continuous(limits = c(20, 45)) +
+          labs(title = "Hank Aaron (OF)", x = "Age", y = "OPS") +
+          theme_bw() +
+          theme(plot.title = element_text(hjust = 0.5))
+
+piazzmi = batting_data |> 
+            filter(playerID == "piazzmi01") |>   
+            ggplot() +               
+            geom_point(aes(Age, OPS)) +
+            scale_x_continuous(limits = c(20, 45)) +
+            labs(title = "Mike Piazza (C)", x = "Age", y = "OPS") +
+            theme_bw() +
+            theme(plot.title = element_text(hjust = 0.5))
+
+jeterde = batting_data |> 
+            filter(playerID == "jeterde01") |>   
+            ggplot() +               
+            geom_point(aes(Age, OPS)) +
+            scale_x_continuous(limits = c(20, 45)) +
+            labs(title = "Derek Jeter (SS)", x = "Age", y = "OPS") +
+            theme_bw() +
+            theme(plot.title = element_text(hjust = 0.5))
+
+martied = batting_data |> 
+            filter(playerID == "martied01") |>   
+            ggplot() +               
+            geom_point(aes(Age, OPS)) +
+            scale_x_continuous(limits = c(20, 45)) +
+            labs(title = "Edgar Martinez (DH)", x = "Age", y = "OPS") +
+            theme_bw() +
+            theme(plot.title = element_text(hjust = 0.5))
+
+(aaronha + piazzmi) / (jeterde + martied) + plot_annotation(title = "OPS by Age",
+                                            theme = theme(plot.title = element_text(hjust = 0.5, size = 18)))
+```
+<div class="info-block">
+From the plots, we can see that the peak OPS age differs across positions. For example, Hank Aaron reached his highest OPS at age 37, while Derek Jeter peaked much earlier at age 25.<br>
+We can also observe that players’ career trajectories generally form a parabolic shape (similar to a quadratic regression curve). We will now further analyze and test this phenomenon.<br>
+</div>
+
+Next, we test whether players’ OPS trajectories follow the assumptions of a quadratic regression model:<br>
+```{r}
+model <- lm(OPS ~ Age + I(Age^2), batting_data)
+model |>  summary()
+```
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>P-value</th>
+      <th>Adjusted R²</th>
+      <th>Interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Age</td>
+      <td>2e-16<br>Estimate: 0.035</td>
+      <td rowspan="2" style="vertical-align: middle;">0.0063</td>
+      <td>For each additional year of age, OPS increases by about 0.035, indicating a positive relationship between Age and OPS.</td>
+    </tr>
+    <tr>
+      <td>I(Age²)</td>
+      <td>2e-16</td>
+      <td>Quadratic effect: OPS increases first and then decreases, implying the existence of a peak period.</td>
+    </tr>
+  </tbody>
+</table>
+
+
+We then examine the residual plots of this model to check whether the assumptions of quadratic regression hold:<br>
+```{r}
+model  |> autoplot()
+```
+Although the model shows a statistically significant quadratic relationship between Age and OPS, the diagnostic plots reveal skewness and heteroskedasticity in residuals. This indicates prediction errors are not fully random, so interpretation should be cautious.<br>
+
+Next, we draw a quadratic regression curve to visualize the relationship between Age and OPS:<br>
+```{r}
+batting_data |> 
+  ggplot() +
+  geom_smooth(aes(Age, OPS), method  = "lm",formula = y ~ x + I(x^2), size = 1.5) +
+  theme_bw() +
+  labs(title = "Age vs OPS", x= "Age", y= "OPS") +
+  theme(plot.title = element_text(hjust = 0.5, size = 18))
+
+
+model$coefficients
+a <- model$coefficients["I(Age^2)"]
+b <- model$coefficients["Age"]
+c <- model$coefficients["(Intercept)"]
+
+vertex_x <- -b / (2 * a)
+vertex_y <- a * vertex_x^2 + b * vertex_x + c
+print(paste("頂點位置：Age =", round(vertex_x), ", OPS =", round(vertex_y, 3)))
+```
+We can see that hitters reach their maximum OPS of about 0.684 at around age 31.
+
+Now let’s further examine how this Age–OPS relationship differs by fielding position:<br>
+```{r}
+batting_data |> 
+  ggplot() +
+  geom_smooth(aes(Age, OPS), method = "lm", formula = y ~ x + I(x^2), size = 1.5) + 
+  scale_x_continuous(limits = c(18, 45)) +
+  facet_wrap(~ Position, ncol = 3) +
+  theme_bw() +
+  labs(title = "Age by Fielding Position vs OPS", x = "Age", y = "OPS") +
+  theme(plot.title = element_text(hjust = 0.5, size = 18))
+```
+<div class="info-block">
+From these facet plots, we can see that OPS versus Age follows a parabolic trend across all fielding positions, but the exact peak ages and OPS levels differ by position.<br>
+Here, we restrict the x-axis (Age) to 18–45 years to avoid distortion from a few extreme outliers (very young or very old players with few appearances).<br>
+</div>
+
+#### 4.1.2 Summary
+<div class="info-block">
+We can see that players across positions reach their peak OPS at different ages, and the peak OPS values also differ.<br>
+Next, we will explore whether this variation is related to players’ **height and weight**.<br>
+It is important to note that the quadratic curves above are based on all annual data across all players, so they represent the average OPS by age — not that every player peaks exactly at age 31.<br>
+Therefore, in the following analysis, we will switch to the **batting_topOPS** dataset, which only retains each player’s best OPS season, to study peak ages more directly by position.<br>
+</div>
+
+
+### 4.2 Analysis of Hitters’ Height and Weight
+Next, let’s look at the scatter plot of players’ height and weight:<br>
+```{r}
+batting_topOPS |> 
+  ggplot() + 
+  geom_point(aes(weight, height)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18)) +
+  labs(title = "Scatter Plot of MLB Hitters’ Weight and Height", x = "Weight", y = "Height") 
+```
+
+<div class="info-block">
+We can generally see that players’ heights are concentrated in the range of 6'7"–7'7", and their weights are mostly within 150–225 lbs.<br>
+It is also clear that players can roughly be divided into two categories: **taller/heavier type** and **shorter/lighter type**.<br>
+</div>
+
+Next, let’s examine the scatter plot of height and weight by fielding position:<br>
+```{r}
+batting_topOPS |> 
+  ggplot() + 
+  geom_point(aes(weight, height)) +
+  facet_wrap(~ Position) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18)) +
+  labs(title = "Scatter Plot of MLB Hitters’ Weight and Height by Fielding Position", x = "Weight", y = "Height") 
+```
+
+<div class="info-block">
+From the scatterplots, we can see that Designated Hitters (DH) tend to be taller and heavier, while Catchers (C), Second Basemen (2B), and Shortstops (SS) are relatively shorter and lighter.<br>
+</div>
+
+Scatterplots only provide a general sense of the trend, so next we use sorted boxplots to gain a clearer view:<br>
+```{r}
+p_height = batting_topOPS |>
+    ggplot() + 
+    geom_boxplot(aes(reorder(Position, height, FUN = median), height)) +
+    labs(x = NULL)
+
+p_weight = batting_topOPS |>
+    ggplot() + 
+    geom_boxplot(aes(reorder(Position, weight, FUN = median), weight)) +
+    labs(x = "Position")
+
+p_height / p_weight + plot_annotation(title = "Height and Weight Box Plot by Fielding Position",
+                                      theme = theme(plot.title = element_text(hjust = 0.5, size = 18,)))
+
+``` 
+<div class="info-block">
+We can observe that Designated Hitters (DH) and First Basemen (1B) have higher medians for both height and weight.  
+In contrast, positions requiring speed and agility — such as Second Base (2B), Shortstop (SS), Third Base (3B), and Center Field (CF) — have relatively lower median height and weight.<br>
+</div>
+
+
+### 4.3 Peak Age Analysis
+#### 4.3.1 Peak Age – Descriptive Analysis
+First, let’s look at a table showing the average peak ages (year of highest OPS) by fielding position:<br>
+```{r}
+position_summary <- batting_topOPS |>
+  group_by(Position) |>
+  summarise(avg_Age = round(mean(Age),2)) |>
+  arrange(desc(avg_Age))
+
+position_summary
+```
+
+
+Residual plots by position:<br>
+```{r}
+batting_topOPS |> 
+  group_by(Position) |> 
+  summarise(age0 = mean(Age)) |> 
+  mutate(dev   = age0 - mean(age0, na.rm = T),
+         hjust = ifelse(dev > 0, 1.07, -0.07)) |> 
+  ggplot() +
+  geom_col(aes(reorder(Position, dev),dev, 
+               fill = dev > 0), show.legend = F) +
+  geom_text(
+    aes(x = reorder(Position, dev), y = dev, label = round(dev, 2), hjust = hjust),
+    vjust = 0.4,
+    size  = 3.3,
+    color = "white",
+    fontface  = "bold",
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = c("FALSE" = "red2", "TRUE" = "black")) +
+  labs(title = "Max-OPS Age Deviation by Position", x = "Fielding Position", y = "Deviation from Mean Age at Max OPS") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18)
+        ,axis.text.y = element_text(size = 10))
+```
+We can see that the four positions with the latest average peak ages are Designated Hitter (DH), Catcher (C), First Base (1B), and Left Field (LF), though the actual differences are quite small.<br>
+
+Next, let’s examine a heatmap of Height, Weight, and Age:<br>
+```{r}
+xbk = batting_topOPS %$% seq(min(weight, na.rm = T), max(weight, na.rm = T), length = 10)
+xbk1 = round(xbk[-1] - diff(xbk)[1]/2, 1)
+
+ybk = batting_topOPS %$% seq(min(height, na.rm = T), max(height, na.rm = T), length = 10)
+ybk1 = round(ybk[-1] - diff(ybk)[1]/2, 1)
+
+
+batting_topOPS |> 
+  mutate(
+    weight_bin = cut(weight, breaks = xbk, labels = xbk1, include.lowest = T),
+    height_bin = cut(height, breaks = ybk, labels = ybk1, include.lowest = T)
+  ) |> 
+  group_by(weight_bin, height_bin) |> 
+  summarise(kpi = mean(Age, na.rm = T)) |> ungroup() |>
+  complete(weight_bin, height_bin, fill = list(kpi = NA)) |> 
+  ggplot(aes(weight_bin, height_bin)) +
+  geom_tile(aes(fill = kpi)) +
+  geom_text(aes(label = round(kpi, 1)), color = "white", size = 4, hjust = 0.5) +
+  scale_fill_gradient(low = "gray", high = "#000" , na.value = "white") +
+  labs(title = "Max-OPS Avg Age by Weight and Height Combination in MLB Hitters", x = "Weight", y = "Height", fill = "Max-OPS Avg Age") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 1, size = 18),
+        axis.text.x = element_text(hjust = 1),
+        legend.title = element_text(hjust = 0.5) )
+```
+It can be observed that height and weight do not show a clear relationship with peak age.<br>
+
+#### 4.3.2 Peak Age – Regression Analysis
+We then run a regression analysis of peak age against height and weight to test for statistical significance.<br>
+```{r}
+model_Age <- lm(Age ~ height + weight, batting_topOPS)
+model_Age |> summary()
+```
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th rowspan="2">Variable</th>
+      <th colspan="2">P-value</th>
+      <th rowspan="2">Adjusted R²</th>
+      <th rowspan="2">Interpretation</th>
+    </tr>
+    <tr>
+      <th>Height</th>
+      <th>Weight</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Age</td>
+      <td>0.75</td>
+      <td>3.54e-06</td>
+      <td>0.006352</td>
+      <td>Only weight shows a significant effect on peak age, but the overall explanatory power of the model is still very weak.</td>
+    </tr>
+  </tbody>
+</table>
+
+We also validate the regression assumptions for the model of peak age against height and weight:<br>
+```{r}
+model_Age  |> autoplot()
+```
+Overall, the assumptions hold reasonably well, with no severe violations of linear regression requirements.<br>
+
+### 4.4 Peak OPS Analysis
+#### 4.4.1 Peak OPS – Descriptive Analysis
+First, let’s look at a table showing the average peak OPS (the highest OPS season) by fielding position:<br>
+```{r}
+OPS_summary <- batting_topOPS |>
+  group_by(Position) |>
+  summarise(avg_OPS = round(mean(OPS),3)) |>
+  arrange(desc(avg_OPS))
+
+OPS_summary
+```
+
+Next, we examine the residual plot of peak OPS by position:<br>
+```{r}
+batting_topOPS |> 
+  group_by(Position) |> 
+  summarise(OPS0 = mean(OPS)) |> 
+  mutate(dev   = OPS0 - mean(OPS0, na.rm = T),
+         hjust = ifelse(dev > 0, 1.0, -0.07)) |> 
+  ggplot() +
+  geom_col(aes(reorder(Position, dev),dev, 
+               fill = dev > 0), show.legend = F) +
+  geom_text(
+    aes(x = reorder(Position, dev), y = dev, label = round(dev, 2), hjust = hjust),
+    vjust = 0.4,
+    size  = 3,
+    color = "white",
+    fontface  = "bold",
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = c("FALSE" = "red2", "TRUE" = "black")) +
+  labs(title = "Max-OPS Age Deviation by Position", x = "Fielding Position", y = "Deviation from Mean OPS at Max OPS") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        axis.text.y = element_text(size = 10))
+```
+We can see that the top two positions in peak OPS are Designated Hitter (DH) and First Base (1B), while the lowest two are Shortstop (SS) and Second Base (2B).<br>
+
+Next, let’s explore the heatmap of players’ Height, Weight, and OPS:<br>
+```{r}
+batting_topOPS |> 
+  mutate(
+    weight_bin = cut(weight, breaks = xbk, labels = xbk1, include.lowest = T),
+    height_bin = cut(height, breaks = ybk, labels = ybk1, include.lowest = T)
+  ) |> 
+  group_by(weight_bin, height_bin) |> 
+  summarise(kpi = mean(OPS, na.rm = T)) |> ungroup() |>
+  complete(weight_bin, height_bin, fill = list(kpi = NA)) |> 
+  ggplot(aes(weight_bin, height_bin)) +
+  geom_tile(aes(fill = kpi)) +
+  geom_text(aes(label = round(kpi, 3)), color = "white", size = 4) +
+  scale_fill_gradient(low = "gray", high = "#000" , na.value = "white") +
+  labs(title = "Max-OPS Age Avg OPS by Weight and Height Combination in MLB Hitters",x = "Weight", y = "Height", fill = "Max-OPS Age Avg OPS") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = -1, size = 18),
+        axis.text.x = element_text(hjust = 1),
+        legend.title = element_text(hjust = 0.5) )
+```
+
+<div class="info-block">
+Compared with the peak age analysis, the OPS heatmap reveals a clearer trend: taller and heavier players tend to have higher OPS.<br>
+Designated Hitters (DH) and First Basemen (1B) are generally taller and heavier, which matches the residual plot where they also showed higher peak OPS values.<br>
+</div>
+
+After noticing this interesting pattern, we further investigate which component of OPS — On-base Percentage (OBP) or Slugging Percentage (SLG) — contributes more to this difference.<br>
+Below are the heatmaps for OBP and SLG:<br>
+```{r}
+OBP_plot = batting_topOPS |> 
+  mutate(
+    weight_bin = cut(weight, breaks = xbk, labels = xbk1, include.lowest = T),
+    height_bin = cut(height, breaks = ybk, labels = ybk1, include.lowest = T)
+  ) |> 
+  group_by(weight_bin, height_bin) |> 
+  summarise(kpi = mean(OBP, na.rm = T)) |> ungroup() |>
+  complete(weight_bin, height_bin, fill = list(kpi = NA)) |> 
+  ggplot(aes(weight_bin, height_bin)) +
+  geom_tile(aes(fill = kpi)) +
+  geom_text(aes(label = round(kpi, 3)), color = "white", size = 3.5) +
+  scale_fill_gradient(low = "gray", high = "#000" , na.value = "white") +
+  ggtitle("OBP") +
+  labs(x = "Weight", y = "Height", fill = "Max-OPS Age Avg OBP") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        axis.text.x = element_text(hjust = 1),
+        legend.title = element_text(hjust = 0.5) )
+
+SLG_plot = batting_topOPS |> 
+  mutate(
+    weight_bin = cut(weight, breaks = xbk, labels = xbk1, include.lowest = T),
+    height_bin = cut(height, breaks = ybk, labels = ybk1, include.lowest = T)
+  ) |> 
+  group_by(weight_bin, height_bin) |> 
+  summarise(kpi = mean(SLG, na.rm = T)) |> ungroup() |>
+  complete(weight_bin, height_bin, fill = list(kpi = NA)) |> 
+  ggplot(aes(weight_bin, height_bin)) +
+  geom_tile(aes(fill = kpi)) +
+  geom_text(aes(label = round(kpi, 3)), color = "white", size = 3.5) +
+  scale_fill_gradient(low = "gray", high = "#000" , na.value = "white") +
+  ggtitle("SLG") +
+  labs(x = "Weight", y = "Height", fill = "Max-OPS Age Avg SLG") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14),
+        axis.text.x = element_text(hjust = 1),
+        legend.title = element_text(hjust = 0.5) )
+
+OBP_plot / SLG_plot + plot_annotation(title = "Max-OPS Age Avg OBP and SLG by Weight and Height Combination in MLB Hitters",
+                                      theme = theme(plot.title = element_text(hjust = 0.5, size = 18)))
+
+```
+We can see that **larger (taller/heavier)** hitters show a noticeably stronger effect on **SLG**, while **OBP** does not show significant differences.<br>
+
+#### 4.4.2 Peak OPS – Regression Analysis
+We then run regression analyses of peak OPS against height and weight to verify the relationship.<br>
+
+OPS:
+```{r}
+model_OPS <- lm(OPS ~ height + weight, batting_topOPS)
+model_OPS |> summary()
+```
+OBP:
+```{r}
+model_OPS_OBP <- lm(OBP ~ height + weight, batting_topOPS)
+model_OPS_OBP |> summary()
+```
+SLG:
+```{r}
+model_OPS_SLG <- lm(SLG ~ height + weight, batting_topOPS)
+model_OPS_SLG |> summary()
+```
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th rowspan="2">Variable</th>
+      <th colspan="2">P-value</th>
+      <th rowspan="2">Adjusted R²</th>
+      <th rowspan="2">Interpretation</th>
+    </tr>
+    <tr>
+      <th>Height</th>
+      <th>Weight</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>OPS</td>
+      <td>0.0061</td>
+      <td>2.63e-08</td>
+      <td>0.0183</td>
+      <td>Both height and weight have significant effects on OPS, but the overall explanatory power remains weak.</td>
+    </tr>
+    <tr>
+      <td>OBP</td>
+      <td>0.418</td>
+      <td>0.793</td>
+      <td>-0.0003</td>
+      <td>No significance for either variable; predictive power is essentially zero.</td>
+    </tr>
+    <tr>
+      <td>SLG</td>
+      <td>0.00077</td>
+      <td>5.2e-15</td>
+      <td>0.0336</td>
+      <td>Both variables are significant, but the predictive power is still weak.</td>
+    </tr>
+  </tbody>
+</table>
+
+
+
+We also validate the regression assumptions for the OPS model against height and weight:<br>
+```{r}
+model_OPS  |> autoplot()
+```
+Overall, the model does not show major violations of the basic assumptions of linear regression.<br>
+
+---
+
+## V. Conclusion  
+<span class="readtime">(2 min read)</span>
+
+### 5.1 Relationship Between Peak Age, Peak OPS, and Height/Weight
+Below is a summary table of the main findings:
+<table class="custom-table">
+  <thead>
+    <tr>
+      <th>Analysis Item</th>
+      <th>Result</th>
+      <th>Explanation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Peak Age</td>
+      <td>Average ~28.5 years</td>
+      <td>The differences in peak age across positions are small, with an overall average around 28.5 years.</td>
+    </tr>
+    <tr>
+      <td>Peak OPS</td>
+      <td>Average ~0.85</td>
+      <td>The differences in peak OPS across positions are larger. The top two are Designated Hitter (DH) and First Base (1B), while the bottom two are Shortstop (SS) and Second Base (2B).</td>
+    </tr>
+    <tr>
+      <td>Impact of Height/Weight on Peak Age</td>
+      <td>Height: not significant; Weight: slight negative effect</td>
+      <td>Height does not significantly affect peak age, but heavier players tend to peak slightly earlier.</td>
+    </tr>
+    <tr>
+      <td>Impact of Height/Weight on Peak OPS</td>
+      <td>Both positively correlated</td>
+      <td>Height and weight are significantly positively related to peak OPS. However, the effect is primarily driven by Slugging Percentage (SLG) rather than On-base Percentage (OBP).</td>
+    </tr>
+  </tbody>
+</table>
+
+### 5.2 Players Shift Fielding Positions During Their Careers
+<div class="info-block">
+Although the **batting_topOPS** dataset shows that peak ages are not significantly different across positions, the earlier Age–OPS plots using **batting_data** reveal that players at less defensively demanding positions such as Designated Hitter (DH) and First Base (1B) tend to reach their OPS peak later.<br>
+This difference likely occurs because star hitters (whose OPS is consistently above average) often transition to DH or 1B in the later stages of their careers. This raises the OPS-age curve for those positions, making their peak age appear later.<br>
+For example, an outfielder who declines defensively but retains strong offensive ability is often moved to DH or 1B to extend his career. As a result, these positions include more older players who still maintain high OPS, causing the estimated peak age from **batting_data** to shift upward compared with other positions.<br>
+</div>
