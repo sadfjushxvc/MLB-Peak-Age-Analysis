@@ -16,4 +16,4 @@ It explores the relationship between player age, OPS, and physical attributes, a
 ## How to Use
 1. Clone this repository:
    ```bash
-   git clone https://github.com/your-username/MLB-Peak-Age-Analysis.git
+   git clone https://github.com/sadfjushxvc/MLB-Peak-Age-Analysis.git
